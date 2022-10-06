@@ -17,6 +17,7 @@ from load_llff import load_llff_data
 from load_deepvoxels import load_dv_data
 from load_blender import load_blender_data
 from load_LINEMOD import load_LINEMOD_data
+from load_dtu import load_dtu_data
 
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -566,9 +567,27 @@ def train():
             far = 1.
         print('NEAR FAR', near, far)
 
+    elif args.dataset_type == 'dtu':
+        images, poses, render_poses, hwf, i_split = load_dtu_data(args.datadir, args.half_res, args.testskip)
+        print('Loaded blender')
+        print("images", images.shape)
+        print("poses", poses.shape)
+        print("render_poses", render_poses.shape)
+        print("hwf", hwf)
+        print("datadir", args.datadir)
+        i_train, i_val, i_test = i_split
+
+        near = 0.
+        far = 2.
+    
     elif args.dataset_type == 'blender':
         images, poses, render_poses, hwf, i_split = load_blender_data(args.datadir, args.half_res, args.testskip)
-        print('Loaded blender', images.shape, render_poses.shape, hwf, args.datadir)
+        print('Loaded blender')
+        print("images", images.shape)
+        print("poses", poses.shape)
+        print("render_poses", render_poses.shape)
+        print("hwf", hwf)
+        print("datadir", args.datadir)
         i_train, i_val, i_test = i_split
 
         near = 2.
@@ -741,12 +760,12 @@ def train():
                     coords = torch.stack(
                         torch.meshgrid(
                             torch.linspace(H//2 - dH, H//2 + dH - 1, 2*dH), 
-                            torch.linspace(W//2 - dW, W//2 + dW - 1, 2*dW)
-                        ), -1)
+                            torch.linspace(W//2 - dW, W//2 + dW - 1, 2*dW), 
+                        indexing='ij'), -1)
                     if i == start:
                         print(f"[Config] Center cropping of size {2*dH} x {2*dW} is enabled until iter {args.precrop_iters}")                
                 else:
-                    coords = torch.stack(torch.meshgrid(torch.linspace(0, H-1, H), torch.linspace(0, W-1, W)), -1)  # (H, W, 2)
+                    coords = torch.stack(torch.meshgrid(torch.linspace(0, H-1, H), torch.linspace(0, W-1, W), indexing='ij'), -1)  # (H, W, 2)
 
                 coords = torch.reshape(coords, [-1,2])  # (H * W, 2)
                 select_inds = np.random.choice(coords.shape[0], size=[N_rand], replace=False)  # (N_rand,)

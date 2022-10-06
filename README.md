@@ -66,9 +66,11 @@ After training for 200k iterations (~8 hours on a single 2080 Ti), you can find 
 To play with other scenes presented in the paper, download the data [here](https://drive.google.com/drive/folders/128yBriW1IG_3NJ5Rp7APSTZsJqdJdfc1). Place the downloaded dataset according to the following directory structure:
 ```
 ├── configs                                                                                                       
-│   ├── ...                                                                                     
-│                                                                                               
-├── data                                                                                                                                                                                                       
+│   └── ...                                                                       
+├── data
+│   ├── dtu                                                                                                                   
+│   │   └── dtu_scan65  # downloaded dtu dataset                                                                                  
+|   |   └── ...
 │   ├── nerf_llff_data                                                                                                  
 │   │   └── fern                                                                                                                             
 │   │   └── flower  # downloaded llff dataset                                                                                  
