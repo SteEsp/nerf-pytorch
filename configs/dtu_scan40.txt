@@ -1,6 +1,6 @@
-expname = dtu_scan65_test
+expname = dtu_scan40_test
 basedir = ./logs
-datadir = ./data/dtu/dtu_scan65
+datadir = ./data/dtu/dtu_scan40
 dataset_type = dtu
 
 factor = 8

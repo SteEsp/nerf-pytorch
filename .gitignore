@@ -8,3 +8,4 @@
 data/*
 logs/*
 .vscode/*
+train_all_dtu.sh

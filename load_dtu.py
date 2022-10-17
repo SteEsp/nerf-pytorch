@@ -103,7 +103,8 @@ def load_dtu_data(basedir, half_res=False, testskip=1):
 
     # render_poses = np.expand_dims(poses[14], axis=0) # [1, 4, 4]
     # i_split = [np.arange(len(imgs)), np.arange(0), np.array([14])]
-    render_poses = poses[:10]
-    i_split = [np.arange(len(imgs)), np.arange(0), np.arange(10)]
+    test_idx = np.arange(0, len(imgs), 3)
+    render_poses = poses[test_idx]
+    i_split = [np.arange(len(imgs)), np.arange(0), len(test_idx)]
 
     return imgs, poses, render_poses, [H, W, focal], i_split

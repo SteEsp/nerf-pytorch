@@ -354,6 +354,8 @@ def render_rays(ray_batch,
     viewdirs = ray_batch[:,-3:] if ray_batch.shape[-1] > 8 else None
     bounds = torch.reshape(ray_batch[...,6:8], [-1,1,2])
     near, far = bounds[...,0], bounds[...,1] # [-1,1]
+    # print("near:", near)
+    # print("far:", far)
 
     t_vals = torch.linspace(0., 1., steps=N_samples)
     if not lindisp:
@@ -380,7 +382,7 @@ def render_rays(ray_batch,
         z_vals = lower + (upper - lower) * t_rand
 
     pts = rays_o[...,None,:] + rays_d[...,None,:] * z_vals[...,:,None] # [N_rays, N_samples, 3]
-
+    # print("pts:", pts)
 
 #     raw = run_network(pts)
     raw = network_query_fn(pts, viewdirs, network_fn)
@@ -491,7 +493,7 @@ def config_parser():
 
     # dataset options
     parser.add_argument("--dataset_type", type=str, default='llff', 
-                        help='options: llff / blender / deepvoxels')
+                        help='options: llff / blender / deepvoxels / dtu')
     parser.add_argument("--testskip", type=int, default=8, 
                         help='will load 1/N images from test/val sets, useful for large datasets like deepvoxels')
 
@@ -524,9 +526,9 @@ def config_parser():
                         help='frequency of tensorboard image logging')
     parser.add_argument("--i_weights", type=int, default=10000, 
                         help='frequency of weight ckpt saving')
-    parser.add_argument("--i_testset", type=int, default=50000, 
+    parser.add_argument("--i_testset", type=int, default=300000, 
                         help='frequency of testset saving')
-    parser.add_argument("--i_video",   type=int, default=50000, 
+    parser.add_argument("--i_video",   type=int, default=300000, 
                         help='frequency of render_poses video saving')
 
     return parser
@@ -717,7 +719,7 @@ def train():
         rays_rgb = torch.Tensor(rays_rgb).to(device)
 
 
-    N_iters = 200000 + 1
+    N_iters = 300000 + 1
     print('Begin')
     print('TRAIN views are', i_train)
     print('TEST views are', i_test)
