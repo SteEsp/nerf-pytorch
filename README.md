@@ -42,6 +42,11 @@ Download data for two example datasets: `lego` and `fern`
 bash download_example_data.sh
 ```
 
+To evaluate a trained NeRF model:
+```
+python run_nerf.py --config configs/lego.txt --eval_only
+```
+
 To train a low-res `lego` NeRF:
 ```
 python run_nerf.py --config configs/lego.txt

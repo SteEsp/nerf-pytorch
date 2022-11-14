@@ -8,6 +8,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from tqdm import tqdm, trange
+import cv2 as cv
+import lpips
+from skimage.metrics import structural_similarity as ssim
 
 import matplotlib.pyplot as plt
 
@@ -354,6 +357,8 @@ def render_rays(ray_batch,
     viewdirs = ray_batch[:,-3:] if ray_batch.shape[-1] > 8 else None
     bounds = torch.reshape(ray_batch[...,6:8], [-1,1,2])
     near, far = bounds[...,0], bounds[...,1] # [-1,1]
+    # print("near:", near)
+    # print("far:", far)
 
     t_vals = torch.linspace(0., 1., steps=N_samples)
     if not lindisp:
@@ -380,7 +385,7 @@ def render_rays(ray_batch,
         z_vals = lower + (upper - lower) * t_rand
 
     pts = rays_o[...,None,:] + rays_d[...,None,:] * z_vals[...,:,None] # [N_rays, N_samples, 3]
-
+    # print("pts:", pts)
 
 #     raw = run_network(pts)
     raw = network_query_fn(pts, viewdirs, network_fn)
@@ -478,6 +483,8 @@ def config_parser():
 
     parser.add_argument("--render_only", action='store_true', 
                         help='do not optimize, reload weights and render out render_poses path')
+    parser.add_argument("--eval_only", action='store_true', 
+                        help="do not optimize, reload weights and run full evaluation on trainin data")
     parser.add_argument("--render_test", action='store_true', 
                         help='render the test set instead of render_poses path')
     parser.add_argument("--render_factor", type=int, default=0, 
@@ -491,7 +498,7 @@ def config_parser():
 
     # dataset options
     parser.add_argument("--dataset_type", type=str, default='llff', 
-                        help='options: llff / blender / deepvoxels')
+                        help='options: llff / blender / deepvoxels / dtu')
     parser.add_argument("--testskip", type=int, default=8, 
                         help='will load 1/N images from test/val sets, useful for large datasets like deepvoxels')
 
@@ -524,14 +531,59 @@ def config_parser():
                         help='frequency of tensorboard image logging')
     parser.add_argument("--i_weights", type=int, default=10000, 
                         help='frequency of weight ckpt saving')
-    parser.add_argument("--i_testset", type=int, default=50000, 
+    parser.add_argument("--i_testset", type=int, default=300000, 
                         help='frequency of testset saving')
-    parser.add_argument("--i_video",   type=int, default=50000, 
+    parser.add_argument("--i_video",   type=int, default=300000, 
                         help='frequency of render_poses video saving')
 
     return parser
 
+def eval(expname, poses, hwf, K, args, render_kwargs_test, images):
+    
+    with torch.no_grad():
+        
+        savedir = os.path.join("evals", expname)
+        os.makedirs(savedir, exist_ok=True)
+        print('eval poses shape', poses.shape)
 
+        # poses = poses[None, 0]
+        # images = images[None, 0]
+        rgbs, _ = render_path(poses, hwf, K, args.chunk, render_kwargs_test, gt_imgs=images, savedir=savedir, render_factor=args.render_factor)
+        print('Done rendering', savedir)
+        
+        N = poses.shape[0]
+        # N = 2
+        psnrs, ssims, lpipss = np.zeros(N), np.zeros(N), np.zeros(N)
+        lpips_fn = lpips.LPIPS(net='alex', version='0.1')
+        
+        for idx in range(N):
+            
+            img_fine = torch.from_numpy(rgbs[idx]).float().to(device) * 255.0
+            true_rgb = torch.from_numpy(images[idx]).float().to(device) * 255.0
+            
+            psnr = 20.0 * torch.log10(255.0 / ((img_fine - true_rgb) ** 2).mean().sqrt())
+            psnrs[idx] = psnr.item()
+
+            ssims[idx] = ssim(img_fine.cpu().numpy(), true_rgb.cpu().numpy(), channel_axis=-1, data_range=255.0)
+
+            lpipss[idx] = lpips_fn(  # Must normalize in [-1; 1] for LPIPS
+                img_fine.permute(2, 1, 0).unsqueeze(0) / (255), #  / 2) - 1.0, 
+                true_rgb.permute(2, 1, 0).unsqueeze(0) / (255)  #  / 2) - 1.0
+            ).item()
+            
+            cv.imwrite(os.path.join(savedir, '{}.png'.format(idx)),
+                       cv.cvtColor(np.concatenate([img_fine.cpu().numpy(), true_rgb.cpu().numpy()]), cv.COLOR_BGR2RGB))
+                        
+        np.savetxt(os.path.join(savedir, 'psnr.csv'), psnrs, delimiter=",")
+        np.savetxt(os.path.join(savedir, 'ssim.csv'), ssims, delimiter=",")
+        np.savetxt(os.path.join(savedir, 'lpips.csv'), lpipss, delimiter=",")
+        out = np.zeros(3)
+        out[0], out[1], out[2] = np.mean(psnrs), np.mean(ssims), np.mean(lpipss)
+        np.savetxt(os.path.join(savedir, 'avgmetrics.csv'), out, delimiter=",")
+
+        print("EXP NAME: ", expname)
+        print('MEAN PSNR: {}\nMEAN SSIM: {}\nMEAN LPIPS: {}'.format(out[0], out[1], out[2]))
+        
 def train():
 
     parser = config_parser()
@@ -672,6 +724,7 @@ def train():
     # Short circuit if only rendering out from trained model
     if args.render_only:
         print('RENDER ONLY')
+        
         with torch.no_grad():
             if args.render_test:
                 # render_test switches to test poses
@@ -690,6 +743,15 @@ def train():
 
             return
 
+    poses = torch.Tensor(poses).to(device)
+
+    if args.eval_only:
+        print("EVAL ONLY")
+        
+        eval(expname, poses, hwf, K, args, render_kwargs_test, images)
+        
+        return 
+    
     # Prepare raybatch tensor if batching random rays
     N_rand = args.N_rand
     use_batching = not args.no_batching
@@ -712,12 +774,11 @@ def train():
     # Move training data to GPU
     if use_batching:
         images = torch.Tensor(images).to(device)
-    poses = torch.Tensor(poses).to(device)
     if use_batching:
         rays_rgb = torch.Tensor(rays_rgb).to(device)
 
 
-    N_iters = 200000 + 1
+    N_iters = 300000 + 1
     print('Begin')
     print('TRAIN views are', i_train)
     print('TEST views are', i_test)
